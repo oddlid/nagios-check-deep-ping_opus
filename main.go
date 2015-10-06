@@ -66,8 +66,19 @@ func (da *DPApp) AddDep(i *Infrastructure) *DPApp {
 	return da
 }
 
-func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float64) {
-	fmt.Printf("%s: %s, %q, response time: %f|time=%f, warning=%f, critical=%f\n", status, desc, path, rtime, rtime, warn, crit)
+func (pr PingResponse) String() string {
+	str := fmt.Sprintf("Application\n\tlong-name    : %q\n\tshort-name   : %q\n\tversion      : %q\n\tsuccess      : %t\n\tresponsetime : %f\n",
+		pr.App.LongName, pr.App.ShortName, pr.App.Version, pr.App.Status.Success, pr.App.Status.ResponseTime.Seconds())
+	for i, val := range pr.App.Dependencies {
+		str += fmt.Sprintf("Infrastructure (#%d)\n\ttype         : %q\n\tname         : %q\n\tsuccess      : %t\n\tresponsetime : %f\n",
+			i, val.Type, val.Name, val.Status.Success, val.Status.ResponseTime.Seconds())
+	}
+	return str
+}
+
+func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float64, pr *PingResponse) {
+	fmt.Printf("%s: %s, %q, response time: %f|time=%f, warning=%f, critical=%f\n%s",
+		status, desc, path, rtime, rtime, warn, crit, pr.String())
 	os.Exit(ecode)
 }
 
@@ -92,8 +103,17 @@ func scrape(url string, chRes chan PingResponse, chCtrl chan bool) {
 
 	// little helper for stuff I do more than once
 	// checks that tag <success> contains "true", as in: <success>true</success>
-	saysTrue := func(s *goquery.Selection) bool {
+	success := func(s *goquery.Selection) bool {
 		return s.Find(mstr[4]).First().Text() == mstr[5]
+	}
+	// one more helper, parses out number from <responsetime>01234..</responsetime>
+	responsetime := func(s *goquery.Selection) (int, error) {
+		rt, err := strconv.Atoi(s.Find(mstr[6]).First().Text())
+		if err != nil {
+			log.Errorf("Unable to parse responsetime: %s", err)
+			return 0, err
+		}
+		return rt, nil
 	}
 
 	t_start := time.Now() // start timer for request
@@ -124,15 +144,12 @@ func scrape(url string, chRes chan PingResponse, chCtrl chan bool) {
 	}
 
 	rs := ResponseStatus{}
-	rs.Success = saysTrue(appl)
-	rt, err := strconv.Atoi(appl.Find(mstr[6]).First().Text()) // <responsetime>...</responsetime>
-	if err != nil {
-		log.Errorf("Unable to parse response time for Application, error: %s", err)
-	} else {
+	rs.Success = success(appl)
+	rt, err := responsetime(appl)
+	if err == nil {
 		rs.ResponseTime = time.Duration(rt) * time.Second
 		pr.App.Status = rs
 	}
-
 	// <dependencies>...</dependencies>
 	appl.Find(mstr[7]).Find(mstr[8]).Each(func(i int, sel *goquery.Selection) {
 		_inf := Infrastructure{}
@@ -144,11 +161,9 @@ func scrape(url string, chRes chan PingResponse, chCtrl chan bool) {
 		if _found {
 			_inf.Name = _name
 		}
-		_inf.Status.Success = saysTrue(sel)
-		_rt, _err := strconv.Atoi(sel.Find(mstr[6]).First().Text()) // <responsetime>...</responsetime>
-		if _err != nil {
-			log.Errorf("Unable to parse response time for dependency #%d, error: %s", i, err)
-		} else {
+		_inf.Status.Success = success(sel)
+		_rt, _err := responsetime(sel)
+		if _err == nil {
 			_inf.Status.ResponseTime = time.Duration(_rt) * time.Second
 			pr.App.AddDep(&_inf)
 		}
@@ -204,24 +219,24 @@ func run_check(c *cli.Context) {
 		if res.HTTPCode != 200 {
 			log.Warnf("HTTP: %d (%s) - please do the needful", res.HTTPCode, dpurl)
 			msg := fmt.Sprintf("Unexpected HTTP return code: %d", res.HTTPCode)
-			nagios_result(E_UNKNOWN, S_UNKNOWN, msg, path, res.RTime.Seconds(), warn, crit)
+			nagios_result(E_UNKNOWN, S_UNKNOWN, msg, path, res.RTime.Seconds(), warn, crit, &res)
 		}
 		if !res.App.Status.Success {
 			log.Warnf("No success. Sooo needful... Buhu...")
 			msg := fmt.Sprintf("Response tagged as unsuccessful (appl: %q, version: %q)", res.App.LongName, res.App.Version)
-			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.RTime.Seconds(), warn, crit)
+			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.RTime.Seconds(), warn, crit, &res)
 		}
 		if res.App.Status.ResponseTime.Seconds() >= crit {
 			msg := fmt.Sprintf("Too long response time (>= %ds)", int(crit))
-			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.App.Status.ResponseTime.Seconds(), warn, crit)
+			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.App.Status.ResponseTime.Seconds(), warn, crit, &res)
 		}
 		if res.App.Status.ResponseTime.Seconds() >= warn {
 			msg := fmt.Sprintf("Too long response time (>= %ds)", int(warn))
-			nagios_result(E_WARNING, S_WARNING, msg, path, res.App.Status.ResponseTime.Seconds(), warn, crit)
+			nagios_result(E_WARNING, S_WARNING, msg, path, res.App.Status.ResponseTime.Seconds(), warn, crit, &res)
 		}
 
 		msg := fmt.Sprintf("Looking good")
-		nagios_result(E_OK, S_OK, msg, path, res.App.Status.ResponseTime.Seconds(), warn, crit)
+		nagios_result(E_OK, S_OK, msg, path, res.App.Status.ResponseTime.Seconds(), warn, crit, &res)
 
 	case <-chCtrl: // not really meaningful when not looping over worker goroutines
 		log.Info("Got done signal on control channel. Bye.")
