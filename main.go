@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	VERSION    string  = "2015-10-05"
+	VERSION    string  = "2015-10-06"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
 	defCrit    float64 = 15.0
