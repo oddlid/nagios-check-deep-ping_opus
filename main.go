@@ -226,17 +226,17 @@ func run_check(c *cli.Context) {
 			msg := fmt.Sprintf("Response tagged as unsuccessful (appl: %q, version: %q)", res.App.LongName, res.App.Version)
 			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.RTime.Seconds(), warn, crit, &res)
 		}
-		if res.App.Status.ResponseTime.Seconds() >= crit {
+		if res.RTime.Seconds() >= crit {
 			msg := fmt.Sprintf("Too long response time (>= %ds)", int(crit))
-			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.App.Status.ResponseTime.Seconds(), warn, crit, &res)
+			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.RTime.Seconds(), warn, crit, &res)
 		}
-		if res.App.Status.ResponseTime.Seconds() >= warn {
+		if res.RTime.Seconds() >= warn {
 			msg := fmt.Sprintf("Too long response time (>= %ds)", int(warn))
-			nagios_result(E_WARNING, S_WARNING, msg, path, res.App.Status.ResponseTime.Seconds(), warn, crit, &res)
+			nagios_result(E_WARNING, S_WARNING, msg, path, res.RTime.Seconds(), warn, crit, &res)
 		}
 
 		msg := fmt.Sprintf("Looking good")
-		nagios_result(E_OK, S_OK, msg, path, res.App.Status.ResponseTime.Seconds(), warn, crit, &res)
+		nagios_result(E_OK, S_OK, msg, path, res.RTime.Seconds(), warn, crit, &res)
 
 	case <-chCtrl: // not really meaningful when not looping over worker goroutines
 		log.Info("Got done signal on control channel. Bye.")
