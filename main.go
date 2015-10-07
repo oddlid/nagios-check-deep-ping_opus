@@ -86,24 +86,19 @@ func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float
 }
 
 func geturl(url string) (*http.Response, error) {
-	// Need to do some hacks as most internal certs does not have a SAN for its IP
-	var client *http.Client
-	ssl := strings.Index(url, "https") >= 0
-
-	if ssl {
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-		client = &http.Client{Transport: tr}
-	} else {
-		client = &http.Client{}
-	}
-
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	req.Header.Set("User-Agent", UA)
+
+	tr := &http.Transport{DisableKeepAlives: true} // we're not reusing the connection, so don't let it hang open
+	if strings.Index(url, "https") >= 0 {
+		// Verifying certs is not the job of this plugin, so we save ourselves a lot of grief 
+		// by skipping any SSL verification
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+	client := &http.Client{Transport: tr}
 
 	return client.Do(req)
 }
@@ -331,7 +326,7 @@ func main() {
 		log.SetOutput(os.Stdout)
 		level, err := log.ParseLevel(c.String("log-level"))
 		if err != nil {
-			log.Fatalf(err.Error())
+			log.Fatal(err.Error())
 		}
 		log.SetLevel(level)
 		if !c.IsSet("log-level") && !c.IsSet("l") && c.Bool("debug") {
