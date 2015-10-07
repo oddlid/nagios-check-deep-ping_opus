@@ -80,7 +80,7 @@ func (pr PingResponse) String() string {
 
 func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float64, pr *PingResponse) {
 	// not sure if we need the multiline output or not. Might drop it.
-	fmt.Printf("%s: %s, %q, response time: %f|time=%f, warning=%f, critical=%f\n%s",
+	fmt.Printf("%s: %s, %q, response time: %f|time=%fs;%fs;%fs\n%s",
 		status, desc, path, rtime, rtime, warn, crit, pr.String())
 	os.Exit(ecode)
 }
