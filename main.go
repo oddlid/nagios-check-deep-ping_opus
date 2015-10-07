@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	VERSION    string  = "2015-10-06"
+	VERSION    string  = "2015-10-07"
+	UA         string  = "VGT Deep Pings/3.0"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
 	defCrit    float64 = 15.0
