@@ -7,6 +7,7 @@ Odd E. Ebbesen, 2015-10-05 09:03:07
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	//"encoding/json"
 	"github.com/PuerkitoBio/goquery"
@@ -77,9 +78,33 @@ func (pr PingResponse) String() string {
 }
 
 func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float64, pr *PingResponse) {
+	// not sure if we need the multiline output or not. Might drop it.
 	fmt.Printf("%s: %s, %q, response time: %f|time=%f, warning=%f, critical=%f\n%s",
 		status, desc, path, rtime, rtime, warn, crit, pr.String())
 	os.Exit(ecode)
+}
+
+func geturl(url string) (*http.Response, error) {
+	// Need to do some hacks as most internal certs does not have a SAN for its IP
+	var client *http.Client
+	ssl := strings.Index(url, "https") >= 0
+
+	if ssl {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client = &http.Client{Transport: tr}
+	} else {
+		client = &http.Client{}
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	req.Header.Set("User-Agent", UA)
+
+	return client.Do(req)
 }
 
 func scrape(url string, chRes chan PingResponse, chCtrl chan bool) {
@@ -117,7 +142,7 @@ func scrape(url string, chRes chan PingResponse, chCtrl chan bool) {
 	}
 
 	t_start := time.Now() // start timer for request
-	resp, err := http.Get(url)
+	resp, err := geturl(url)
 	t_end := time.Now() // end timer
 	if err != nil {
 		log.Fatalf("Unable to fetch URL: %q, error: %s", url, err)
