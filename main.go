@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	VERSION    string  = "2015-10-07"
+	VERSION    string  = "2016-01-08"
 	UA         string  = "VGT Deep Pings/3.0"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
@@ -141,7 +141,8 @@ func scrape(url string, chRes chan PingResponse, chCtrl chan bool) {
 	resp, err := geturl(url)
 	t_end := time.Now() // end timer
 	if err != nil {
-		log.Fatalf("Unable to fetch URL: %q, error: %s", url, err)
+		log.Debugf("Unable to fetch URL: %q, error: %s", url, err)
+		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, time.Duration(t_end.Sub(t_start)).Seconds(), 0, 0, &PingResponse{})
 	}
 	doc, err := goquery.NewDocumentFromResponse(resp)
 	if err != nil {
@@ -235,12 +236,10 @@ func run_check(c *cli.Context) {
 		fmt.Printf("%s\n", string(jres))
 		*/
 
-		// I'm wondering if the actual response time for getting the DP url or the response time noted
-		// in the response should be used. Should check with a dev
 		if res.HTTPCode != 200 {
 			log.Warnf("HTTP: %d (%s) - please do the needful", res.HTTPCode, dpurl)
 			msg := fmt.Sprintf("Unexpected HTTP return code: %d", res.HTTPCode)
-			nagios_result(E_UNKNOWN, S_UNKNOWN, msg, path, res.RTime.Seconds(), warn, crit, &res)
+			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.RTime.Seconds(), warn, crit, &res)
 		}
 		if !res.App.Status.Success {
 			log.Warnf("No success. Sooo needful... Buhu...")
