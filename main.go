@@ -43,11 +43,11 @@ type ResponseStatus struct {
 	ResponseTime time.Duration
 }
 
-type Infrastructure struct {
-	Name   string
-	Type   string
-	Status ResponseStatus
-}
+//type Infrastructure struct {
+//	Name   string
+//	Type   string
+//	Status ResponseStatus
+//}
 
 type DPApp struct {
 	LongName     string
@@ -57,11 +57,11 @@ type DPApp struct {
 	Dependencies []Infrastructure
 }
 
-type PingResponse struct {
-	HTTPCode int
-	RTime    time.Duration
-	App      DPApp
-}
+//type PingResponse struct {
+//	HTTPCode int
+//	RTime    time.Duration
+//	App      DPApp
+//}
 
 func (da *DPApp) AddDep(i *Infrastructure) *DPApp {
 	da.Dependencies = append(da.Dependencies, *i)
