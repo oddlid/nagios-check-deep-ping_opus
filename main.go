@@ -1,27 +1,31 @@
 /*
 Deep Ping check for Opus/LovelyBridge
 
-Odd E. Ebbesen, 2015-10-05 09:03:07
+New version that parses XML more "for real", as the previous attempt
+started failing due to ever changing output from the DPs
+
+Odd E. Ebbesen, 2016-04-15 09:46:33
+
 */
 
 package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
-	//"encoding/json"
-	"github.com/PuerkitoBio/goquery"
 	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
-	"strconv"
 	"time"
 )
 
 const (
-	VERSION    string  = "2016-01-08"
+	VERSION    string  = "2016-04-15"
 	UA         string  = "VGT Deep Pings/3.0"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
@@ -38,44 +42,16 @@ const (
 	E_UNKNOWN  int     = 3
 )
 
-type ResponseStatus struct {
-	Success      bool
-	ResponseTime time.Duration
-}
-
-//type Infrastructure struct {
-//	Name   string
-//	Type   string
-//	Status ResponseStatus
-//}
-
-type DPApp struct {
-	LongName     string
-	ShortName    string
-	Version      string
-	Status       ResponseStatus
-	Dependencies []Infrastructure
-}
-
-//type PingResponse struct {
-//	HTTPCode int
-//	RTime    time.Duration
-//	App      DPApp
-//}
-
-func (da *DPApp) AddDep(i *Infrastructure) *DPApp {
-	da.Dependencies = append(da.Dependencies, *i)
-	return da
+// Trying to simplify debugging
+func _debug(f func()) {
+	lvl := log.GetLevel()
+	if lvl == log.DebugLevel {
+		f()
+	}
 }
 
 func (pr PingResponse) String() string {
-	str := fmt.Sprintf("Application\n\tlong-name    : %q\n\tshort-name   : %q\n\tversion      : %q\n\tsuccess      : %t\n\tresponsetime : %f\n",
-		pr.App.LongName, pr.App.ShortName, pr.App.Version, pr.App.Status.Success, pr.App.Status.ResponseTime.Seconds())
-	for i, val := range pr.App.Dependencies {
-		str += fmt.Sprintf("Infrastructure (#%d)\n\ttype         : %q\n\tname         : %q\n\tsuccess      : %t\n\tresponsetime : %f\n",
-			i, val.Type, val.Name, val.Status.Success, val.Status.ResponseTime.Seconds())
-	}
-	return str
+	return fmt.Sprintf("%#v", pr)
 }
 
 func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float64, pr *PingResponse) {
@@ -103,95 +79,34 @@ func geturl(url string) (*http.Response, error) {
 	return client.Do(req)
 }
 
-func scrape(url string, chRes chan PingResponse, chCtrl chan bool) {
-	defer func() {
-		chCtrl <- true // send signal that parsing/scraping is done
-	}()
-
-	mstr := []string{ // match strings
-		"application",
-		"long-name",
-		"short-name",
-		"version",
-		"success",
-		"true",
-		"responsetime",
-		"dependencies",
-		"infrastructure",
-		"type",
-		"name",
-	}
-
-	// little helper for stuff I do more than once
-	// checks that tag <success> contains "true", as in: <success>true</success>
-	success := func(s *goquery.Selection) bool {
-		return s.Find(mstr[4]).First().Text() == mstr[5]
-	}
-	// one more helper, parses out number from <responsetime>01234..</responsetime>
-	responsetime := func(s *goquery.Selection) (int, error) {
-		rt, err := strconv.Atoi(s.Find(mstr[6]).First().Text())
-		if err != nil {
-			log.Errorf("Unable to parse responsetime: %s", err)
-			return 0, err
-		}
-		return rt, nil
-	}
-
-	t_start := time.Now() // start timer for request
+func scrape(url string, chRes chan PingResponse) {
+	t_start := time.Now()
 	resp, err := geturl(url)
-	t_end := time.Now() // end timer
+	responseTime := time.Duration(time.Now().Sub(t_start)).Seconds()
 	if err != nil {
-		log.Debugf("Unable to fetch URL: %q, error: %s", url, err)
-		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, time.Duration(t_end.Sub(t_start)).Seconds(), 0, 0, &PingResponse{})
+		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, responseTime, 0, 0, &PingResponse{Err: err})
 	}
-	doc, err := goquery.NewDocumentFromResponse(resp)
+	defer resp.Body.Close()
+	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalf("Problem loading document, error: %s", err)
+		nagios_result(E_CRITICAL, S_CRITICAL, "Error parsing XML", url, responseTime, 0, 0, &PingResponse{Err: err})
+	}
+	pr := PingResponse{}
+	err = xml.Unmarshal(data, &pr)
+	if err != nil {
+		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to parse returned (XML) content", url, responseTime, 0, 0, &pr)
 	}
 
-	pr := PingResponse{HTTPCode: resp.StatusCode, RTime: t_end.Sub(t_start), App: DPApp{}}
-
-	appl := doc.Find(mstr[0])            // <application>...</application>
-	appLN, foundLN := appl.Attr(mstr[1]) // <... long-name="...">
-	if foundLN {
-		pr.App.LongName = appLN
-	}
-	appSN, foundSN := appl.Attr(mstr[2]) // <... short-name="...">
-	if foundSN {
-		pr.App.ShortName = appSN
-	}
-	appVer, foundVer := appl.Attr(mstr[3]) // <... version="...">
-	if foundVer {
-		pr.App.Version = appVer
-	}
-
-	rs := ResponseStatus{}
-	rs.Success = success(appl)
-	rt, err := responsetime(appl)
-	if err == nil {
-		rs.ResponseTime = time.Duration(rt) * time.Second
-		pr.App.Status = rs
-	}
-	// <dependencies>...</dependencies>
-	appl.Find(mstr[7]).Find(mstr[8]).Each(func(i int, sel *goquery.Selection) {
-		_inf := Infrastructure{}
-		_type, _found := sel.Attr(mstr[9]) // <... type="...">
-		if _found {
-			_inf.Type = _type
+	// The not so lightweight JSON processing here is only actually run
+	// if the log level is at "debug"
+	_debug(func() {
+		jbytes, err := json.MarshalIndent(pr, "", " ")
+		if err != nil {
+			log.Error(err)
 		}
-		_name, _found := sel.Attr(mstr[10]) // <... name="...">
-		if _found {
-			_inf.Name = _name
-		}
-		_inf.Status.Success = success(sel)
-		_rt, _err := responsetime(sel)
-		if _err == nil {
-			_inf.Status.ResponseTime = time.Duration(_rt) * time.Second
-			pr.App.AddDep(&_inf)
-		}
+		log.Debugf("XML as JSON:\n%s", jbytes)
 	})
 
-	// send result
 	chRes <- pr
 }
 
@@ -216,50 +131,14 @@ func run_check(c *cli.Context) {
 	log.Debugf("DP URL   : %s", dpurl)
 
 	chPRes := make(chan PingResponse)
-	chCtrl := make(chan bool)
 	defer close(chPRes)
-	defer close(chCtrl)
 
 	// run in parallell thread
-	go scrape(dpurl, chPRes, chCtrl)
+	go scrape(dpurl, chPRes)
 
 	select {
 	case res := <-chPRes:
-		log.Debugf("Response object: %#v", res)
-
-		/* This was also a good way to see objects
-		jres, err := json.Marshal(res)
-		if err != nil {
-			log.Fatalf("Error converting to JSON: %s\n", err)
-		}
-		//log.Debugf("Response JSON: %s\n", string(jres))
-		fmt.Printf("%s\n", string(jres))
-		*/
-
-		if res.HTTPCode != 200 {
-			log.Warnf("HTTP: %d (%s) - please do the needful", res.HTTPCode, dpurl)
-			msg := fmt.Sprintf("Unexpected HTTP return code: %d", res.HTTPCode)
-			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.RTime.Seconds(), warn, crit, &res)
-		}
-		if !res.App.Status.Success {
-			log.Warnf("No success. Sooo needful... Buhu...")
-			msg := fmt.Sprintf("Response tagged as unsuccessful (appl: %q, version: %q)", res.App.LongName, res.App.Version)
-			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.RTime.Seconds(), warn, crit, &res)
-		}
-		if res.RTime.Seconds() >= crit {
-			msg := fmt.Sprintf("Too long response time (>= %ds)", int(crit))
-			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.RTime.Seconds(), warn, crit, &res)
-		}
-		if res.RTime.Seconds() >= warn {
-			msg := fmt.Sprintf("Too long response time (>= %ds)", int(warn))
-			nagios_result(E_WARNING, S_WARNING, msg, path, res.RTime.Seconds(), warn, crit, &res)
-		}
-
-		msg := fmt.Sprintf("Looking good")
-		nagios_result(E_OK, S_OK, msg, path, res.RTime.Seconds(), warn, crit, &res)
-
-	case <-chCtrl: // not really meaningful when not looping over worker goroutines
-		log.Info("Got done signal on control channel. Bye.")
+		log.Debugf("Response object:\n%#v", res)
 	case <-time.After(time.Second * time.Duration(tmout)):
 		//log.Errorf("%s: DP %q timed out after %d seconds", S_CRITICAL, dpurl, int(tmout))
 		fmt.Printf("%s: DP %q timed out after %d seconds.\n", S_CRITICAL, dpurl, int(tmout))
@@ -278,6 +157,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "hostname, H",
+			Value: "localhost",
 			Usage: "Hostname or IP to check",
 		},
 		cli.IntFlag{

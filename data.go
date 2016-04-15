@@ -6,7 +6,8 @@ import (
 
 type PingResponse struct {
 	XMLName     xml.Name      `xml:"PingResponse"`
-	Application []Application `xml:"PingResponse>application"`
+	Application []Application `xml:"application"`
+	Err         error
 }
 
 type Application struct {
@@ -14,25 +15,25 @@ type Application struct {
 	LongName      string         `xml:"long-name,attr"`
 	ShortName     string         `xml:"short-name,attr"`
 	Version       string         `xml:"version,attr"`
-	FailureReason string         `xml:"application>failureReason"`
-	EndPoint      string         `xml:"application>endpoint"`
-	Success       bool           `xml:"application>success"`
-	Skipped       bool           `xml:"application>skipped"`
-	ResponseTime  float64        `xml:"application>responsetime"`
-	Dependencies  []Dependencies `xml:"application>dependencies"`
+	FailureReason string         `xml:"failureReason"`
+	EndPoint      string         `xml:"endpoint"`
+	Success       bool           `xml:"success"`
+	Skipped       bool           `xml:"skipped"`
+	ResponseTime  float64        `xml:"responsetime"`
+	Dependencies  []Dependencies `xml:"dependencies"`
 }
 
 type Dependencies struct {
 	XMLName        xml.Name         `xml:"dependencies"`
 	Infrastructure []Infrastructure `xml:"infrastructure"`
-	Application    []Application    `xml:"dependencies>application"`
+	Application    []Application    `xml:"application"`
 }
 
 type Infrastructure struct {
 	XMLName      xml.Name `xml:"infrastructure"`
 	Name         string   `xml:"name,attr"`
 	Type         string   `xml:"type,attr"`
-	Success      bool     `xml:"infrastructure>success"`
-	ResponseTime float64  `xml:"infrastructure>responsetime"`
+	Success      bool     `xml:"success"`
+	ResponseTime float64  `xml:"responsetime"`
 }
 
