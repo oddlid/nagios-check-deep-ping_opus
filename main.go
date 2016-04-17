@@ -98,6 +98,7 @@ func scrape(url string, chRes chan PingResponse) {
 
 	// The not so lightweight JSON processing here is only actually run
 	// if the log level is at "debug"
+	// switch this to pr.DumpJSON() instead if enabled again
 	//_debug(func() {
 	//	jbytes, err := json.MarshalIndent(pr, "", " ")
 	//	if err != nil {

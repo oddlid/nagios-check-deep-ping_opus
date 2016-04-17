@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -71,11 +72,30 @@ func (p PingResponse) String() string {
 
 func (p PingResponse) Dump(w io.Writer) {
 	if p.PP_Prefix == "" {
-		p.PP_Prefix = "\t"
+		p.PP_Prefix = T_DP
 	}
 	p.pp(w, p.PP_Prefix, 0)
 }
 
+func (p PingResponse) DumpJSON(w io.Writer, indent bool) (int, error) {
+	if p.PP_Prefix == "" {
+		p.PP_Prefix = T_DP
+	}
+	var jbytes []byte
+	var err error
+	if !indent {
+		jbytes, err = json.Marshal(p)
+	} else {
+		jbytes, err = json.MarshalIndent(p, "", p.PP_Prefix)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return w.Write(jbytes)
+}
+
+// _pp left-pads a string with <prefix> repeated <level> times,
+// then right-pads the word <key> up to <align> length, then prints " : <val>\n"
 func _pp(w io.Writer, prefix, key, val string, align, level int) {
 	fmt.Fprintf(w, fmt.Sprintf("%s%s%d%s", strings.Repeat(prefix, level), "%-", align, "s : %s\n"), key, val)
 }
