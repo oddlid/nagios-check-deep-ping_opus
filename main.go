@@ -4,7 +4,7 @@ Deep Ping check for Opus/LovelyBridge
 New version that parses XML more "for real", as the previous attempt
 started failing due to ever changing output from the DPs
 
-Odd E. Ebbesen, 2016-04-15 09:46:33
+Odd E. Ebbesen, 2016-04-17 22:36:09
 
 */
 
@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	VERSION    string  = "2016-04-15"
+	VERSION    string  = "2016-04-17"
 	UA         string  = "VGT Deep Pings/3.0"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
@@ -48,10 +48,6 @@ func _debug(f func()) {
 	if lvl == log.DebugLevel {
 		f()
 	}
-}
-
-func (pr PingResponse) String() string {
-	return fmt.Sprintf("%#v", pr)
 }
 
 func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float64, pr *PingResponse) {
@@ -83,15 +79,17 @@ func scrape(url string, chRes chan PingResponse) {
 	t_start := time.Now()
 	resp, err := geturl(url)
 	responseTime := time.Duration(time.Now().Sub(t_start)).Seconds()
+	pr := PingResponse{ResponseTime: responseTime}
 	if err != nil {
-		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, responseTime, 0, 0, &PingResponse{Err: err})
+		pr.Err = err
+		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, responseTime, 0, 0, &pr)
 	}
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		nagios_result(E_CRITICAL, S_CRITICAL, "Error parsing XML", url, responseTime, 0, 0, &PingResponse{Err: err})
+		pr.Err = err
+		nagios_result(E_CRITICAL, S_CRITICAL, "Error reading response body", url, responseTime, 0, 0, &pr)
 	}
-	pr := PingResponse{}
 	err = xml.Unmarshal(data, &pr)
 	if err != nil {
 		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to parse returned (XML) content", url, responseTime, 0, 0, &pr)
@@ -138,7 +136,9 @@ func run_check(c *cli.Context) {
 
 	select {
 	case res := <-chPRes:
-		log.Debugf("Response object:\n%#v", res)
+		//log.Debugf("Response object:\n%#v", res)
+		//fmt.Print(res.String())
+		fmt.Printf("Overall success: %t\n", res.Success())
 	case <-time.After(time.Second * time.Duration(tmout)):
 		//log.Errorf("%s: DP %q timed out after %d seconds", S_CRITICAL, dpurl, int(tmout))
 		fmt.Printf("%s: DP %q timed out after %d seconds.\n", S_CRITICAL, dpurl, int(tmout))
