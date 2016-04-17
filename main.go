@@ -12,7 +12,7 @@ package main
 
 import (
 	"crypto/tls"
-	"encoding/json"
+	//"encoding/json"
 	"encoding/xml"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
@@ -84,6 +84,7 @@ func scrape(url string, chRes chan PingResponse) {
 		pr.Err = err
 		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, responseTime, 0, 0, &pr)
 	}
+	pr.HTTPCode = resp.StatusCode
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -97,13 +98,13 @@ func scrape(url string, chRes chan PingResponse) {
 
 	// The not so lightweight JSON processing here is only actually run
 	// if the log level is at "debug"
-	_debug(func() {
-		jbytes, err := json.MarshalIndent(pr, "", " ")
-		if err != nil {
-			log.Error(err)
-		}
-		log.Debugf("XML as JSON:\n%s", jbytes)
-	})
+	//_debug(func() {
+	//	jbytes, err := json.MarshalIndent(pr, "", " ")
+	//	if err != nil {
+	//		log.Error(err)
+	//	}
+	//	log.Debugf("XML as JSON:\n%s", jbytes)
+	//})
 
 	chRes <- pr
 }
@@ -136,9 +137,9 @@ func run_check(c *cli.Context) {
 
 	select {
 	case res := <-chPRes:
-		//log.Debugf("Response object:\n%#v", res)
-		//fmt.Print(res.String())
-		fmt.Printf("Overall success: %t\n", res.Success())
+		log.Debugf("Response object:\n%#v", res)
+		log.Debug("\n", res.String())
+		log.Debugf("Overall success: %t\n", res.Success())
 	case <-time.After(time.Second * time.Duration(tmout)):
 		//log.Errorf("%s: DP %q timed out after %d seconds", S_CRITICAL, dpurl, int(tmout))
 		fmt.Printf("%s: DP %q timed out after %d seconds.\n", S_CRITICAL, dpurl, int(tmout))

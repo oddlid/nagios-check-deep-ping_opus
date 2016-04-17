@@ -1,9 +1,30 @@
 package main
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"strings"
+)
+
+const (
+	T_AP string = "Application"
+	T_DE string = "Dependencies"
+	T_DP string = "\t"							// Default Prefix, for pretty printing
+	T_EP string = "EndPoint"
+	T_FR string = "FailureReason"
+	T_HC string = "HTTPCode"
+	T_IS string = "Infrastructure"
+	T_LN string = "LongName"
+	T_NA string = "Name"
+	T_PR string = "PingResponse"
+	T_RT string = "ResponseTime"
+	T_SK string = "Skipped"
+	T_SN string = "ShortName"
+	T_SU string = "Success"
+	T_TY string = "Type"
+	T_VS string = "Version"
 )
 
 type PingResponse struct {
@@ -12,6 +33,7 @@ type PingResponse struct {
 	Err          error         `json:"error,omitempty"`
 	ResponseTime float64       `json:",omitempty"`
 	PP_Prefix    string        `json:",omitempty"`
+	HTTPCode     int           `json:",omitempty"`
 }
 
 type Application struct {
@@ -42,77 +64,76 @@ type Infrastructure struct {
 }
 
 func (p PingResponse) String() string {
+	var buf bytes.Buffer
+	p.Dump(&buf)
+	return buf.String()
+}
+
+func (p PingResponse) Dump(w io.Writer) {
 	if p.PP_Prefix == "" {
 		p.PP_Prefix = "\t"
 	}
-	return p.pp(p.PP_Prefix, 0)
+	p.pp(w, p.PP_Prefix, 0)
 }
 
-func _pp(prefix, key, val string, align, level int) string {
-	pf := strings.Repeat(prefix, level)
-	f := fmt.Sprintf("%s%s%d%s", pf, "%-", align, "s : %s\n")
-	return fmt.Sprintf(f, key, val)
+func _pp(w io.Writer, prefix, key, val string, align, level int) {
+	fmt.Fprintf(w, fmt.Sprintf("%s%s%d%s", strings.Repeat(prefix, level), "%-", align, "s : %s\n"), key, val)
 }
 
-func (i Infrastructure) pp(prefix string, level int) string {
-	w := 12
-	str := _pp(prefix, "Name", i.Name, w, level)
-	str += _pp(prefix, "Type", i.Type, w, level)
-	str += _pp(prefix, "Success", fmt.Sprintf("%t", i.Success), w, level)
-	str += _pp(prefix, "Responsetime", fmt.Sprintf("%v", i.ResponseTime), w, level)
-	return str
+func (i Infrastructure) pp(w io.Writer, prefix string, level int) {
+	wi := 12
+	_pp(w, prefix, T_NA, i.Name, wi, level)
+	_pp(w, prefix, T_TY, i.Type, wi, level)
+	_pp(w, prefix, T_SU, fmt.Sprintf("%t", i.Success), wi, level)
+	_pp(w, prefix, T_RT, fmt.Sprintf("%v", i.ResponseTime), wi, level)
 }
 
-func (a Application) pp(prefix string, level int) string {
-	w := 13
-	str := _pp(prefix, "LongName", a.LongName, w, level)
-	str += _pp(prefix, "ShortName", a.ShortName, w, level)
-	str += _pp(prefix, "Version", a.Version, w, level)
-	str += _pp(prefix, "FailureReason", a.FailureReason, w, level)
-	str += _pp(prefix, "EndPoint", a.EndPoint, w, level)
-	str += _pp(prefix, "Success", fmt.Sprintf("%t", a.Success), w, level)
-	str += _pp(prefix, "Skipped", fmt.Sprintf("%t", a.Skipped), w, level)
-	str += _pp(prefix, "ResponseTime", fmt.Sprintf("%f", a.ResponseTime), w, level)
+func (a Application) pp(w io.Writer, prefix string, level int) {
+	wi := 13
+	_pp(w, prefix, T_LN, a.LongName, wi, level)
+	_pp(w, prefix, T_SN, a.ShortName, wi, level)
+	_pp(w, prefix, T_VS, a.Version, wi, level)
+	_pp(w, prefix, T_FR, a.FailureReason, wi, level)
+	_pp(w, prefix, T_EP, a.EndPoint, wi, level)
+	_pp(w, prefix, T_SU, fmt.Sprintf("%t", a.Success), wi, level)
+	_pp(w, prefix, T_SK, fmt.Sprintf("%t", a.Skipped), wi, level)
+	_pp(w, prefix, T_RT, fmt.Sprintf("%f", a.ResponseTime), wi, level)
 
 	if len(a.Dependencies) > 0 {
 		for i := range a.Dependencies {
-			str += _pp(prefix, "Dependencies", "", w, level)
-			str += a.Dependencies[i].pp(prefix, level+1)
+			_pp(w, prefix, T_DE, "", wi, level)
+			a.Dependencies[i].pp(w, prefix, level+1)
 		}
 	}
-
-	return str
 }
 
-func (d Dependencies) pp(prefix string, level int) string {
-	w := 14
-	var str string
+func (d Dependencies) pp(w io.Writer, prefix string, level int) {
+	wi := 14
 	if len(d.Infrastructure) > 0 {
 		for i := range d.Infrastructure {
-			str += _pp(prefix, "Infrastructure", "", w, level)
-			str += d.Infrastructure[i].pp(prefix, level+1)
+			_pp(w, prefix, T_IS, "", wi, level)
+			d.Infrastructure[i].pp(w, prefix, level+1)
 		}
 	}
 	if len(d.Application) > 0 {
 		for j := range d.Application {
-			str += _pp(prefix, "Application", "", w, level)
-			str += d.Application[j].pp(prefix, level+1)
+			_pp(w, prefix, T_AP, "", wi, level)
+			d.Application[j].pp(w, prefix, level+1)
 		}
 	}
-	return str
 }
 
-func (p PingResponse) pp(prefix string, level int) string {
-	w := 12
-	str := "=== BEGIN: PingResponse ===\n"
-	str += _pp(prefix, "ResponseTime", fmt.Sprintf("%f", p.ResponseTime), w, level)
-	str += _pp(prefix, "Error", fmt.Sprintf("%v", p.Err), w, level)
+func (p PingResponse) pp(w io.Writer, prefix string, level int) {
+	wi := 12
+	fmt.Fprintf(w, "=== BEGIN: %s ===\n", T_PR)
+	_pp(w, prefix, T_HC, fmt.Sprintf("%d", p.HTTPCode), wi, level)
+	_pp(w, prefix, T_RT, fmt.Sprintf("%f", p.ResponseTime), wi, level)
+	_pp(w, prefix, "Error", fmt.Sprintf("%v", p.Err), wi, level)
 	for i := range p.Application {
-		str += _pp(prefix, "Application", "", w, level)
-		str += p.Application[i].pp(prefix, level + 1)
+		_pp(w, prefix, T_AP, "", wi, level)
+		p.Application[i].pp(w, prefix, level+1)
 	}
-	str += "=== END: PingResponse ===\n"
-	return str
+	fmt.Fprintf(w, "=== END: %s ===\n", T_PR)
 }
 
 func (d Dependencies) Success() bool {
