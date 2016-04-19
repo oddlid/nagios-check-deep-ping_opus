@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	VERSION    string  = "2016-04-17"
+	VERSION    string  = "2016-04-19"
 	UA         string  = "VGT Deep Pings/3.0"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
@@ -78,22 +78,22 @@ func geturl(url string) (*http.Response, error) {
 func scrape(url string, chRes chan PingResponse) {
 	t_start := time.Now()
 	resp, err := geturl(url)
-	responseTime := time.Duration(time.Now().Sub(t_start)).Seconds()
-	pr := PingResponse{ResponseTime: responseTime}
+	pr := PingResponse{ResponseTime: time.Duration(time.Now().Sub(t_start)).Seconds(), URL: url}
 	if err != nil {
 		pr.Err = err
-		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, responseTime, 0, 0, &pr)
+		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, pr.ResponseTime, 0, 0, &pr)
 	}
 	pr.HTTPCode = resp.StatusCode
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		pr.Err = err
-		nagios_result(E_CRITICAL, S_CRITICAL, "Error reading response body", url, responseTime, 0, 0, &pr)
+		nagios_result(E_CRITICAL, S_CRITICAL, "Error reading response body", url, pr.ResponseTime, 0, 0, &pr)
 	}
 	err = xml.Unmarshal(data, &pr)
 	if err != nil {
-		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to parse returned (XML) content", url, responseTime, 0, 0, &pr)
+		pr.Err = err
+		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to parse returned (XML) content", url, pr.ResponseTime, 0, 0, &pr)
 	}
 
 	// The not so lightweight JSON processing here is only actually run
@@ -141,6 +141,10 @@ func run_check(c *cli.Context) {
 		log.Debugf("Response object:\n%#v", res)
 		log.Debug("\n", res.String())
 		log.Debugf("Overall success: %t\n", res.Success())
+
+		if res.HTTPCode != 200 {
+			// CRIT
+		}
 	case <-time.After(time.Second * time.Duration(tmout)):
 		//log.Errorf("%s: DP %q timed out after %d seconds", S_CRITICAL, dpurl, int(tmout))
 		fmt.Printf("%s: DP %q timed out after %d seconds.\n", S_CRITICAL, dpurl, int(tmout))
