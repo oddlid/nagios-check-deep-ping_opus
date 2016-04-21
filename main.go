@@ -112,6 +112,7 @@ func scrape(url string, chRes chan PingResponse) {
 }
 
 func run_check(c *cli.Context) {
+	url := c.String("url")
 	prot := c.String("protocol")
 	host := c.String("hostname")
 	port := c.Int("port")
@@ -120,9 +121,15 @@ func run_check(c *cli.Context) {
 	crit := c.Float64("critical")
 	tmout := c.Float64("timeout")
 
-	dpurl := fmt.Sprintf("%s://%s:%d%s", prot, host, port, path)
+	var dpurl string
+	if url != "" {
+		dpurl = url
+	} else {
+		dpurl = fmt.Sprintf("%s://%s:%d%s", prot, host, port, path)
+	}
 
 	_debug(func() {
+		log.Debugf("URL:     : %q", url)
 		log.Debugf("Protocol : %s", prot)
 		log.Debugf("Host     : %s", host)
 		log.Debugf("Port     : %d", port)
@@ -183,6 +190,10 @@ func main() {
 	app.Usage = "XML Rest API parser for WirelessCar Deep Pings, Opus version"
 	//app.EnableBashCompletion = true
 	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "url, U",
+			Usage: "Full URL to check, in the format: protocol://(hostname|IP)(?:port)/path",
+		},
 		cli.StringFlag{
 			Name:  "hostname, H",
 			Value: "localhost",
