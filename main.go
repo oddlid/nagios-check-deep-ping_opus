@@ -181,7 +181,7 @@ func main() {
 	app.Author = "Odd E. Ebbesen"
 	app.Email = "odd.ebbesen@wirelesscar.com"
 	app.Usage = "XML Rest API parser for WirelessCar Deep Pings, Opus version"
-	app.EnableBashCompletion = true
+	//app.EnableBashCompletion = true
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "hostname, H",
