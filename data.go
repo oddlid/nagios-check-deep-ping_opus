@@ -28,6 +28,13 @@ const (
 	T_VS string = "Version"
 )
 
+// just internal stats for how many pretty print calls are actually made. For fun...
+var pp_count int = 0
+
+type Succeeder interface {
+	Ok() bool
+}
+
 type PingResponse struct {
 	XMLName      xml.Name      `xml:"PingResponse" json:",omitempty"`
 	Application  []Application `xml:"application,omitempty" json:",omitempty"`
@@ -99,6 +106,7 @@ func (p PingResponse) DumpJSON(w io.Writer, indent bool) (int, error) {
 // then right-pads the word <key> up to <align> length, then prints " : <val>\n"
 func _pp(w io.Writer, prefix, key, val string, align, level int) {
 	fmt.Fprintf(w, fmt.Sprintf("%s%s%d%s", strings.Repeat(prefix, level), "%-", align, "s : %s\n"), key, val)
+	pp_count++
 }
 
 func (i Infrastructure) pp(w io.Writer, prefix string, level int) {
@@ -108,7 +116,7 @@ func (i Infrastructure) pp(w io.Writer, prefix string, level int) {
 	p(T_NA, i.Name)
 	p(T_TY, i.Type)
 	p(T_SU, fmt.Sprintf("%t", i.Success))
-	p(T_RT, fmt.Sprintf("%v", i.ResponseTime))
+	p(T_RT, fmt.Sprintf("%f", i.ResponseTime))
 }
 
 func (a Application) pp(w io.Writer, prefix string, level int) {
@@ -154,7 +162,7 @@ func (pr PingResponse) pp(w io.Writer, prefix string, level int) {
 	p := func(k, v string) {
 		_pp(w, prefix, k, v, 12, level)
 	}
-	fmt.Fprintf(w, "=== BEGIN: %s ===\n", T_PR)
+	fmt.Fprintf(w, "=== BEGIN: %s =====\n", T_PR)
 	p("URL", pr.URL)
 	p(T_HC, fmt.Sprintf("%d", pr.HTTPCode))
 	p(T_RT, fmt.Sprintf("%f", pr.ResponseTime))
@@ -163,33 +171,44 @@ func (pr PingResponse) pp(w io.Writer, prefix string, level int) {
 		p(T_AP, "")
 		pr.Application[i].pp(w, prefix, level+1)
 	}
-	fmt.Fprintf(w, "=== END: %s ===\n", T_PR)
+	fmt.Fprintf(w, "===== END: %s =====\n", T_PR)
 }
 
-func (d Dependencies) Success() bool {
-	for i := range d.Infrastructure {
-		if !d.Infrastructure[i].Success {
-			return false
-		}
-	}
-	for j := range d.Application {
-		if !d.Application[j].Success {
-			return false
-		}
-	}
-	return true
-}
+// Implement the Succeeder interface
 
-func (p PingResponse) Success() bool {
+func (p PingResponse) Ok() bool {
 	for i := range p.Application {
-		if !p.Application[i].Success {
+		if !p.Application[i].Ok() {
 			return false
-		}
-		for j := range p.Application[i].Dependencies {
-			if !p.Application[i].Dependencies[j].Success() {
-				return false
-			}
 		}
 	}
 	return true
 }
+
+func (a Application) Ok() bool {
+	for d := range a.Dependencies {
+		if !a.Dependencies[d].Ok() {
+			return false
+		}
+	}
+	return a.Success
+}
+
+func (d Dependencies) Ok() bool {
+	for i := range d.Infrastructure {
+		if !d.Infrastructure[i].Ok() {
+			return false
+		}
+	}
+	for a := range d.Application {
+		if !d.Application[a].Ok() {
+			return false
+		}
+	}
+	return true
+}
+
+func (i Infrastructure) Ok() bool {
+	return i.Success
+}
+

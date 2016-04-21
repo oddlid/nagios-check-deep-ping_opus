@@ -11,8 +11,8 @@ Odd E. Ebbesen, 2016-04-17 22:36:09
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
-	//"encoding/json"
 	"encoding/xml"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	VERSION    string  = "2016-04-19"
+	VERSION    string  = "2016-04-21"
 	UA         string  = "VGT Deep Pings/3.0"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
@@ -42,6 +42,9 @@ const (
 	E_UNKNOWN  int     = 3
 )
 
+// if true, we include long output from the check
+var verbose bool = false
+
 // Trying to simplify debugging
 func _debug(f func()) {
 	lvl := log.GetLevel()
@@ -51,14 +54,18 @@ func _debug(f func()) {
 }
 
 func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float64, pr *PingResponse) {
-	// not sure if we need the multiline output or not. Might drop it.
-	fmt.Printf("%s: %s, %q, response time: %f|time=%fs;%fs;%fs\n%s",
-		status, desc, path, rtime, rtime, warn, crit, pr.String())
+	msg := fmt.Sprintf("%s: % s; Path: %q; Response time: %f;|time=%fs;%fs;%fs\n",
+		status, desc, path, rtime, rtime, warn, crit)
+	if verbose {
+		msg += pr.String()
+		log.Debugf("pp_count: %d\n", pp_count)
+	}
+	fmt.Println(msg)
 	os.Exit(ecode)
 }
 
 func geturl(url string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -66,7 +73,7 @@ func geturl(url string) (*http.Response, error) {
 
 	tr := &http.Transport{DisableKeepAlives: true} // we're not reusing the connection, so don't let it hang open
 	if strings.Index(url, "https") >= 0 {
-		// Verifying certs is not the job of this plugin, so we save ourselves a lot of grief 
+		// Verifying certs is not the job of this plugin, so we save ourselves a lot of grief
 		// by skipping any SSL verification
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
@@ -80,6 +87,7 @@ func scrape(url string, chRes chan PingResponse) {
 	resp, err := geturl(url)
 	pr := PingResponse{ResponseTime: time.Duration(time.Now().Sub(t_start)).Seconds(), URL: url}
 	if err != nil {
+		log.Error(err)
 		pr.Err = err
 		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, pr.ResponseTime, 0, 0, &pr)
 	}
@@ -87,25 +95,16 @@ func scrape(url string, chRes chan PingResponse) {
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		log.Error(err)
 		pr.Err = err
 		nagios_result(E_CRITICAL, S_CRITICAL, "Error reading response body", url, pr.ResponseTime, 0, 0, &pr)
 	}
 	err = xml.Unmarshal(data, &pr)
 	if err != nil {
+		log.Error(err)
 		pr.Err = err
-		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to parse returned (XML) content", url, pr.ResponseTime, 0, 0, &pr)
+		nagios_result(E_UNKNOWN, S_UNKNOWN, "Unable to parse returned (XML) content", url, pr.ResponseTime, 0, 0, &pr)
 	}
-
-	// The not so lightweight JSON processing here is only actually run
-	// if the log level is at "debug"
-	// switch this to pr.DumpJSON() instead if enabled again
-	//_debug(func() {
-	//	jbytes, err := json.MarshalIndent(pr, "", " ")
-	//	if err != nil {
-	//		log.Error(err)
-	//	}
-	//	log.Debugf("XML as JSON:\n%s", jbytes)
-	//})
 
 	chRes <- pr
 }
@@ -119,16 +118,18 @@ func run_check(c *cli.Context) {
 	crit := c.Float64("critical")
 	tmout := c.Float64("timeout")
 
-	log.Debugf("Protocol : %s", prot)
-	log.Debugf("Host     : %s", host)
-	log.Debugf("Port     : %d", port)
-	log.Debugf("UPath    : %s", path)
-	log.Debugf("Warning  : %f", warn)
-	log.Debugf("Critical : %f", crit)
-	log.Debugf("Timeout  : %f", tmout)
-
 	dpurl := fmt.Sprintf("%s://%s:%d%s", prot, host, port, path)
-	log.Debugf("DP URL   : %s", dpurl)
+
+	_debug(func() {
+		log.Debugf("Protocol : %s", prot)
+		log.Debugf("Host     : %s", host)
+		log.Debugf("Port     : %d", port)
+		log.Debugf("UPath    : %s", path)
+		log.Debugf("Warning  : %f", warn)
+		log.Debugf("Critical : %f", crit)
+		log.Debugf("Timeout  : %f", tmout)
+		log.Debugf("DP URL   : %s", dpurl)
+	})
 
 	chPRes := make(chan PingResponse)
 	defer close(chPRes)
@@ -138,15 +139,34 @@ func run_check(c *cli.Context) {
 
 	select {
 	case res := <-chPRes:
-		log.Debugf("Response object:\n%#v", res)
-		log.Debug("\n", res.String())
-		log.Debugf("Overall success: %t\n", res.Success())
-
-		if res.HTTPCode != 200 {
-			// CRIT
+		if res.HTTPCode != http.StatusOK {
+			msg := fmt.Sprintf("Unexpected HTTP response code: %d", res.HTTPCode)
+			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.ResponseTime, warn, crit, &res)
 		}
+		if !res.Ok() {
+			_debug(func() {
+				var buf bytes.Buffer
+				written, err := res.DumpJSON(&buf, true)
+				if err != nil {
+					log.Error(err)
+				}
+				log.Debugf("XML as JSON (%d bytes):\n%s", written, buf.String())
+			})
+			msg := "Response tagged as unsuccessful, see long output for details"
+			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.ResponseTime, warn, crit, &res)
+		}
+		if res.ResponseTime >= crit {
+			msg := fmt.Sprintf("Response time above critical [ %ds ] limit", int(crit))
+			nagios_result(E_CRITICAL, S_CRITICAL, msg, path, res.ResponseTime, warn, crit, &res)
+		}
+		if res.ResponseTime >= warn {
+			msg := fmt.Sprintf("Response time above warning [ %ds ] limit", int(warn))
+			nagios_result(E_WARNING, S_WARNING, msg, path, res.ResponseTime, warn, crit, &res)
+		}
+		// Got here, all good
+		nagios_result(E_OK, S_OK, "Looking good", path, res.ResponseTime, warn, crit, &res)
+
 	case <-time.After(time.Second * time.Duration(tmout)):
-		//log.Errorf("%s: DP %q timed out after %d seconds", S_CRITICAL, dpurl, int(tmout))
 		fmt.Printf("%s: DP %q timed out after %d seconds.\n", S_CRITICAL, dpurl, int(tmout))
 		os.Exit(E_CRITICAL)
 	}
@@ -201,9 +221,15 @@ func main() {
 			Usage: "Log level (options: debug, info, warn, error, fatal, panic)",
 		},
 		cli.BoolFlag{
+			Name:        "verbose, V",
+			Usage:       "Verbose output. Includes a full dump of the returned data",
+			Destination: &verbose,
+			EnvVar:      "OPUS_DP_VERBOSE",
+		},
+		cli.BoolFlag{
 			Name:   "debug, d",
 			Usage:  "Run in debug mode",
-			EnvVar: "DEBUG",
+			EnvVar: "OPUS_DP_DEBUG",
 		},
 	}
 
