@@ -58,7 +58,7 @@ func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float
 		status, desc, path, rtime, rtime, warn, crit)
 	if verbose {
 		msg += pr.String()
-		log.Debugf("pp_count: %d\n", pp_count)
+		log.Debugf("pp_count : %d\n", pp_count)
 	}
 	fmt.Println(msg)
 	os.Exit(ecode)
@@ -103,6 +103,7 @@ func scrape(url string, chRes chan PingResponse) {
 	err = xml.Unmarshal(data, &pr)
 	if err != nil {
 		log.Error(err)
+		log.Debugf("Response body:\n%s", data)
 		pr.Err = err
 		nagios_result(E_UNKNOWN, S_UNKNOWN, fmt.Sprintf("Unable to parse returned (XML) content from %q", url), "", pr.ResponseTime, 0, 0, &pr)
 	}
