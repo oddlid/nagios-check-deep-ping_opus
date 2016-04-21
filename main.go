@@ -73,8 +73,9 @@ func geturl(url string) (*http.Response, error) {
 
 	tr := &http.Transport{DisableKeepAlives: true} // we're not reusing the connection, so don't let it hang open
 	if strings.Index(url, "https") >= 0 {
-		// Verifying certs is not the job of this plugin, so we save ourselves a lot of grief
-		// by skipping any SSL verification
+		// Verifying certs is not the job of this plugin,
+		// so we save ourselves a lot of grief by skipping any SSL verification
+		// Could be a good idea for later to set this at runtime instead
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	client := &http.Client{Transport: tr}
@@ -89,7 +90,7 @@ func scrape(url string, chRes chan PingResponse) {
 	if err != nil {
 		log.Error(err)
 		pr.Err = err
-		nagios_result(E_CRITICAL, S_CRITICAL, "Unable to fetch URL:", url, pr.ResponseTime, 0, 0, &pr)
+		nagios_result(E_CRITICAL, S_CRITICAL, fmt.Sprintf("Unable to fetch URL: %q", url), "", pr.ResponseTime, 0, 0, &pr)
 	}
 	pr.HTTPCode = resp.StatusCode
 	defer resp.Body.Close()
@@ -97,13 +98,13 @@ func scrape(url string, chRes chan PingResponse) {
 	if err != nil {
 		log.Error(err)
 		pr.Err = err
-		nagios_result(E_CRITICAL, S_CRITICAL, "Error reading response body", url, pr.ResponseTime, 0, 0, &pr)
+		nagios_result(E_CRITICAL, S_CRITICAL, fmt.Sprintf("Error reading response body from %q", url), "", pr.ResponseTime, 0, 0, &pr)
 	}
 	err = xml.Unmarshal(data, &pr)
 	if err != nil {
 		log.Error(err)
 		pr.Err = err
-		nagios_result(E_UNKNOWN, S_UNKNOWN, "Unable to parse returned (XML) content", url, pr.ResponseTime, 0, 0, &pr)
+		nagios_result(E_UNKNOWN, S_UNKNOWN, fmt.Sprintf("Unable to parse returned (XML) content from %q", url), "", pr.ResponseTime, 0, 0, &pr)
 	}
 
 	chRes <- pr
