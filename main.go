@@ -19,6 +19,7 @@ import (
 	"github.com/codegangsta/cli"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -112,7 +113,7 @@ func scrape(url string, chRes chan PingResponse) {
 }
 
 func run_check(c *cli.Context) {
-	url := c.String("url")
+	furl := c.String("url")
 	prot := c.String("protocol")
 	host := c.String("hostname")
 	port := c.Int("port")
@@ -122,14 +123,19 @@ func run_check(c *cli.Context) {
 	tmout := c.Float64("timeout")
 
 	var dpurl string
-	if url != "" {
-		dpurl = url
+	if furl != "" {
+		dpurl = furl
+		tmpurl, err := url.Parse(furl)
+		if err == nil {
+			path = tmpurl.EscapedPath()
+			//log.Debugf("URL Path : %s", path)
+		}
 	} else {
 		dpurl = fmt.Sprintf("%s://%s:%d%s", prot, host, port, path)
 	}
 
 	_debug(func() {
-		log.Debugf("URL:     : %q", url)
+		log.Debugf("URL:     : %q", furl)
 		log.Debugf("Protocol : %s", prot)
 		log.Debugf("Host     : %s", host)
 		log.Debugf("Port     : %d", port)
