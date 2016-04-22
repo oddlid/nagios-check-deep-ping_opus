@@ -8,16 +8,17 @@ package main
 
 import (
 	"crypto/tls"
-	"fmt"
 	//"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/PuerkitoBio/goquery"
 	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/cli"
-	"net/http"
-	"os"
-	"strings"
-	"strconv"
-	"time"
 )
 
 const (
@@ -94,7 +95,7 @@ func geturl(url string) (*http.Response, error) {
 
 	tr := &http.Transport{DisableKeepAlives: true} // we're not reusing the connection, so don't let it hang open
 	if strings.Index(url, "https") >= 0 {
-		// Verifying certs is not the job of this plugin, so we save ourselves a lot of grief 
+		// Verifying certs is not the job of this plugin, so we save ourselves a lot of grief
 		// by skipping any SSL verification
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
