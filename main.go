@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	VERSION    string  = "2016-04-21"
+	VERSION    string  = "2016-04-25"
 	UA         string  = "VGT Deep Pings/3.0"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
@@ -55,7 +55,7 @@ func _debug(f func()) {
 }
 
 func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float64, pr *PingResponse) {
-	msg := fmt.Sprintf("%s: % s; Path: %q; Response time: %f;|time=%fs;%fs;%fs\n",
+	msg := fmt.Sprintf("%s: % s; Path: %q; Response time: %f|time=%fs;%fs;%fs\n",
 		status, desc, path, rtime, rtime, warn, crit)
 	if verbose {
 		msg += pr.String()
