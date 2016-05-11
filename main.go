@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	VERSION    string  = "2016-04-25"
+	VERSION    string  = "2016-05-11"
 	UA         string  = "VGT Deep Pings/3.0"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
@@ -55,7 +55,7 @@ func _debug(f func()) {
 }
 
 func nagios_result(ecode int, status, desc, path string, rtime, warn, crit float64, pr *PingResponse) {
-	msg := fmt.Sprintf("%s: % s; Path: %q; Response time: %f|time=%fs;%fs;%fs\n",
+	msg := fmt.Sprintf("%s: % s, Path: %q, Response time: %f|time=%fs;%f;%f\n",
 		status, desc, path, rtime, rtime, warn, crit)
 	if verbose {
 		msg += pr.String()
@@ -87,11 +87,22 @@ func geturl(url string) (*http.Response, error) {
 func scrape(url string, chRes chan PingResponse) {
 	t_start := time.Now()
 	resp, err := geturl(url)
-	pr := PingResponse{ResponseTime: time.Duration(time.Now().Sub(t_start)).Seconds(), URL: url}
+	pr := PingResponse{
+		ResponseTime: time.Duration(time.Now().Sub(t_start)).Seconds(),
+		URL:          url,
+	}
 	if err != nil {
 		log.Error(err)
 		pr.Err = err
-		nagios_result(E_CRITICAL, S_CRITICAL, fmt.Sprintf("Unable to fetch URL: %q", url), "", pr.ResponseTime, 0, 0, &pr)
+		nagios_result(
+			E_CRITICAL,
+			S_CRITICAL,
+			fmt.Sprintf("Unable to fetch URL: %q", url),
+			"",
+			pr.ResponseTime,
+			0,
+			0,
+			&pr)
 	}
 	pr.HTTPCode = resp.StatusCode
 	defer resp.Body.Close()
@@ -99,21 +110,37 @@ func scrape(url string, chRes chan PingResponse) {
 	if err != nil {
 		log.Error(err)
 		pr.Err = err
-		nagios_result(E_CRITICAL, S_CRITICAL, fmt.Sprintf("Error reading response body from %q", url), "", pr.ResponseTime, 0, 0, &pr)
+		nagios_result(
+			E_CRITICAL,
+			S_CRITICAL,
+			fmt.Sprintf("Error reading response body from %q", url),
+			"",
+			pr.ResponseTime,
+			0,
+			0,
+			&pr)
 	}
 	err = xml.Unmarshal(data, &pr)
 	if err != nil {
 		log.Error(err)
 		log.Debugf("Response body:\n%s", data)
 		pr.Err = err
-		nagios_result(E_UNKNOWN, S_UNKNOWN, fmt.Sprintf("Unable to parse returned (XML) content from %q", url), "", pr.ResponseTime, 0, 0, &pr)
+		nagios_result(
+			E_UNKNOWN,
+			S_UNKNOWN,
+			fmt.Sprintf("Unable to parse returned (XML) content from %q", url),
+			"",
+			pr.ResponseTime,
+			0,
+			0,
+			&pr)
 	}
 
 	chRes <- pr
 }
 
 func run_check(c *cli.Context) {
-	furl := c.String("url")
+	furl := c.String("url") // f for full-url
 	prot := c.String("protocol")
 	host := c.String("hostname")
 	port := c.Int("port")

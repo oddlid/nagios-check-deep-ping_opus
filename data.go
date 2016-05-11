@@ -12,7 +12,7 @@ import (
 const (
 	T_AP string = "Application"
 	T_DE string = "Dependencies"
-	T_DP string = "  "							// Default Prefix, for pretty printing
+	T_DP string = "  " // Default Prefix, for pretty printing
 	T_EP string = "EndPoint"
 	T_FR string = "FailureReason"
 	T_HC string = "HTTPCode"
@@ -211,4 +211,3 @@ func (d Dependencies) Ok() bool {
 func (i Infrastructure) Ok() bool {
 	return i.Success
 }
-
