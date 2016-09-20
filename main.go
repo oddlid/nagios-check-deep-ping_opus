@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	VERSION    string  = "2016-05-11"
+	VERSION    string  = "2016-09-20"
 	UA         string  = "VGT Deep Pings/3.0"
 	defPort    int     = 80
 	defWarn    float64 = 10.0
@@ -104,8 +104,14 @@ func scrape(url string, chRes chan PingResponse) {
 			0,
 			&pr)
 	}
-	pr.HTTPCode = resp.StatusCode
 	defer resp.Body.Close()
+
+	pr.HTTPCode = resp.StatusCode
+	if pr.HTTPCode != http.StatusOK {
+		chRes <- pr
+		return
+	}
+
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Error(err)
