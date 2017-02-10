@@ -150,25 +150,45 @@ func (i Infrastructure) pp(w io.Writer, prefix string, level int) {
 }
 
 func (a Application) pp(w io.Writer, prefix string, level int) {
-	max, k := _keys(T_LN, T_SN, T_VS, T_FR, T_EP, T_SU, T_SK, T_RT, T_DE)
+	// Fix for Görans OCD:
+	// We need to build the keys slice dynamically depending on which keys have values. 
+	// Then we only use the maxlength from that, and can NOT use the array otherwise,
+	// because we can never know at which index the keys are
+	k := Keys{T_SU, T_SK, T_RT, T_DE} // non-string props can be added regardless
+	_k := func(k1, k2 string) {
+		if k1 != "" {
+			k = append(k, k2)
+		}
+	}
+
+	_k(a.LongName, T_LN)
+	_k(a.ShortName, T_SN)
+	_k(a.Version, T_VS)
+	_k(a.FailureReason, T_FR)
+	_k(a.EndPoint, T_EP)
+
+	max := k.MaxLen()
+	k = nil // not needed after this
+
 	p := func(k, v string) {
 		if v != "" {
 			_pp(w, prefix, k, v, max, level)
 		}
 	}
-	p(k[0], a.LongName)
-	p(k[1], a.ShortName)
-	p(k[2], a.Version)
-	p(k[3], a.FailureReason)
-	p(k[4], a.EndPoint)
-	p(k[5], fmt.Sprintf("%t", a.Success))
-	p(k[6], fmt.Sprintf("%t", a.Skipped))
-	p(k[7], fmt.Sprintf("%f", a.ResponseTime))
+
+	p(T_LN, a.LongName)
+	p(T_SN, a.ShortName)
+	p(T_VS, a.Version)
+	p(T_FR, a.FailureReason)
+	p(T_EP, a.EndPoint)
+	p(T_SU, fmt.Sprintf("%t", a.Success))
+	p(T_SK, fmt.Sprintf("%t", a.Skipped))
+	p(T_RT, fmt.Sprintf("%f", a.ResponseTime))
 
 	if a.Dependencies != nil {
 		deplen := len(a.Dependencies)
 		for i := range a.Dependencies {
-			_hdr(w, prefix, fmt.Sprintf("%s (#%d/%d)", k[8], i+1, deplen), "=>", level)
+			_hdr(w, prefix, fmt.Sprintf("%s (#%d/%d)", T_DE, i+1, deplen), "=>", level)
 			a.Dependencies[i].pp(w, prefix, level+1)
 		}
 	}
