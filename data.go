@@ -35,6 +35,8 @@ type Succeeder interface {
 	Ok() bool
 }
 
+type Keys []string
+
 type PingResponse struct {
 	XMLName      xml.Name      `xml:"PingResponse" json:",omitempty"`
 	Application  []Application `xml:"application,omitempty" json:",omitempty"`
@@ -70,6 +72,17 @@ type Infrastructure struct {
 	Type         string   `xml:"type,attr" json:",omitempty"`
 	Success      bool     `xml:"success" json:",omitempty"`
 	ResponseTime float64  `xml:"responsetime" json:",omitempty"`
+}
+
+func (k Keys) MaxLen() int {
+	max := 0
+	for i := range k {
+		klen := len(k[i])
+		if klen > max {
+			max = klen
+		}
+	}
+	return max
 }
 
 func (p PingResponse) String() string {
@@ -109,67 +122,93 @@ func _pp(w io.Writer, prefix, key, val string, align, level int) {
 	pp_count++
 }
 
-func (i Infrastructure) pp(w io.Writer, prefix string, level int) {
-	p := func(k, v string) {
-		_pp(w, prefix, k, v, 12, level)
+// _hdr is a simplified version of _pp that is used for printing headers
+func _hdr(w io.Writer, prefix, key, sep string, level int) {
+	fmt.Fprintf(w, fmt.Sprintf("%s%s %s\n", strings.Repeat(prefix, level), key, sep))
+}
+
+// _keys is a little helper function that returns a Keys{} instance and the max key length
+// just to save some typing
+func _keys(ks ...string) (int, Keys) {
+	klen := len(ks)
+	k := make(Keys, klen)
+	for i := range ks {
+		k[i] = ks[i]
 	}
-	p(T_NA, i.Name)
-	p(T_TY, i.Type)
-	p(T_SU, fmt.Sprintf("%t", i.Success))
-	p(T_RT, fmt.Sprintf("%f", i.ResponseTime))
+	return k.MaxLen(), k
+}
+
+func (i Infrastructure) pp(w io.Writer, prefix string, level int) {
+	max, k := _keys(T_NA, T_TY, T_SU, T_RT)
+	p := func(k, v string) {
+		_pp(w, prefix, k, v, max, level)
+	}
+	p(k[0], i.Name)
+	p(k[1], i.Type)
+	p(k[2], fmt.Sprintf("%t", i.Success))
+	p(k[3], fmt.Sprintf("%f", i.ResponseTime))
 }
 
 func (a Application) pp(w io.Writer, prefix string, level int) {
+	max, k := _keys(T_LN, T_SN, T_VS, T_FR, T_EP, T_SU, T_SK, T_RT, T_DE)
 	p := func(k, v string) {
-		_pp(w, prefix, k, v, 13, level)
+		if v != "" {
+			_pp(w, prefix, k, v, max, level)
+		}
 	}
-	p(T_LN, a.LongName)
-	p(T_SN, a.ShortName)
-	p(T_VS, a.Version)
-	p(T_FR, a.FailureReason)
-	p(T_EP, a.EndPoint)
-	p(T_SU, fmt.Sprintf("%t", a.Success))
-	p(T_SK, fmt.Sprintf("%t", a.Skipped))
-	p(T_RT, fmt.Sprintf("%f", a.ResponseTime))
+	p(k[0], a.LongName)
+	p(k[1], a.ShortName)
+	p(k[2], a.Version)
+	p(k[3], a.FailureReason)
+	p(k[4], a.EndPoint)
+	p(k[5], fmt.Sprintf("%t", a.Success))
+	p(k[6], fmt.Sprintf("%t", a.Skipped))
+	p(k[7], fmt.Sprintf("%f", a.ResponseTime))
 
-	if len(a.Dependencies) > 0 {
+	if a.Dependencies != nil {
+		deplen := len(a.Dependencies)
 		for i := range a.Dependencies {
-			p(T_DE, "")
+			_hdr(w, prefix, fmt.Sprintf("%s (#%d/%d)", k[8], i+1, deplen), "=>", level)
 			a.Dependencies[i].pp(w, prefix, level+1)
 		}
 	}
 }
 
 func (d Dependencies) pp(w io.Writer, prefix string, level int) {
-	p := func(k, v string) {
-		_pp(w, prefix, k, v, 14, level)
-	}
-	if len(d.Infrastructure) > 0 {
+	if d.Infrastructure != nil {
+		inflen := len(d.Infrastructure)
 		for i := range d.Infrastructure {
-			p(T_IS, "")
+			_hdr(w, prefix, fmt.Sprintf("%s (#%d/%d)", T_IS, i+1, inflen), "=>", level)
 			d.Infrastructure[i].pp(w, prefix, level+1)
 		}
 	}
-	if len(d.Application) > 0 {
+	if d.Application != nil{
+		applen := len(d.Application)
 		for j := range d.Application {
-			p(T_AP, "")
+			_hdr(w, prefix, fmt.Sprintf("%s (#%d/%d)", T_AP, j+1, applen), "=>", level)
 			d.Application[j].pp(w, prefix, level+1)
 		}
 	}
 }
 
 func (pr PingResponse) pp(w io.Writer, prefix string, level int) {
+	max, k := _keys("URL", T_HC, T_RT, "Error", T_AP)
 	p := func(k, v string) {
-		_pp(w, prefix, k, v, 12, level)
+		_pp(w, prefix, k, v, max, level)
 	}
-	fmt.Fprintf(w, "=== BEGIN: %s =====\n", T_PR)
-	p("URL", pr.URL)
-	p(T_HC, fmt.Sprintf("%d", pr.HTTPCode))
-	p(T_RT, fmt.Sprintf("%f", pr.ResponseTime))
-	p("Error", fmt.Sprintf("%v", pr.Err))
-	for i := range pr.Application {
-		p(T_AP, "")
-		pr.Application[i].pp(w, prefix, level+1)
+	fmt.Fprintf(w, "===== BEGIN: %s =====\n", T_PR)
+	p(k[0], pr.URL)
+	p(k[1], fmt.Sprintf("%d", pr.HTTPCode))
+	p(k[2], fmt.Sprintf("%f", pr.ResponseTime))
+	if pr.Err != nil {
+		p(k[3], pr.Err.Error())
+	}
+	if pr.Application != nil {
+		applen := len(pr.Application)
+		for i := range pr.Application {
+			_hdr(w, prefix, fmt.Sprintf("%s (#%d/%d)", k[4], i+1, applen), "=>", level)
+			pr.Application[i].pp(w, prefix, level+1)
+		}
 	}
 	fmt.Fprintf(w, "===== END: %s =====\n", T_PR)
 }
