@@ -151,7 +151,7 @@ func (i Infrastructure) pp(w io.Writer, prefix string, level int) {
 
 func (a Application) pp(w io.Writer, prefix string, level int) {
 	// Fix for Görans OCD:
-	// We need to build the keys slice dynamically depending on which keys have values. 
+	// We need to build the keys slice dynamically depending on which keys have values.
 	// Then we only use the maxlength from that, and can NOT use the array otherwise,
 	// because we can never know at which index the keys are
 	k := Keys{T_SU, T_SK, T_RT, T_DE} // non-string props can be added regardless
@@ -202,7 +202,7 @@ func (d Dependencies) pp(w io.Writer, prefix string, level int) {
 			d.Infrastructure[i].pp(w, prefix, level+1)
 		}
 	}
-	if d.Application != nil{
+	if d.Application != nil {
 		applen := len(d.Application)
 		for j := range d.Application {
 			_hdr(w, prefix, fmt.Sprintf("%s (#%d/%d)", T_AP, j+1, applen), "=>", level)
